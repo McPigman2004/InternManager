@@ -2,6 +2,7 @@
 using InternManager.DTO.task;
 using InternManager.Model;
 using InternManager.Model.task;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [AllowAnonymous]
     public class taskController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -73,19 +75,19 @@ namespace InternManager.Controllers
         public async Task<IActionResult> CreateTask(task_regDTO newtaskRegDTO)
         {
             var isUserExists = await _db.Users
-                .AnyAsync(u => u.id == newtaskRegDTO.leader_ID);
+                .AnyAsync(u => u.id == newtaskRegDTO.admin_ID);
 
             if (!isUserExists)
             {
                 return NotFound(new
                 {
-                    message = $"Không tìm thấy tài khoản nào có ID = {newtaskRegDTO.leader_ID} trong hệ thống."
+                    message = $"Không tìm thấy tài khoản nào có ID = {newtaskRegDTO.admin_ID} trong hệ thống."
                 });
             }
 
 
             var hasValidRole = await _db.Users
-                .AnyAsync(u => u.id == newtaskRegDTO.leader_ID
+                .AnyAsync(u => u.id == newtaskRegDTO.admin_ID
                            && (u.role == UserRole.leader || u.role == UserRole.admin));
 
             if (!hasValidRole)
@@ -107,7 +109,7 @@ namespace InternManager.Controllers
 
             var newTask = new task_reg
             {
-                leader_ID = newtaskRegDTO.leader_ID,
+                leader_ID = newtaskRegDTO.admin_ID,
                 User_ID = newtaskRegDTO.User_ID,
                 tieu_de = newtaskRegDTO.title.Trim(),
                 noi_dung = newtaskRegDTO.content.Trim(),
@@ -281,73 +283,6 @@ namespace InternManager.Controllers
             return Ok(new
             {
                 message = $"Xóa task có ID = {taskId} thành công."
-            });
-        }
-
-        // Xem danh sách task dành cho leader
-        [HttpGet("list")]
-        public IActionResult GetAllTasks(int leaderID)
-        {
-            var tasks = _db.Task_Regs
-                .Include(t => t.Users)
-                .Where(t => t.leader_ID == leaderID)
-                .Take(30)
-                .Select(t => new
-                {
-                    t.id,
-                    t.leader_ID,
-                    t.tieu_de,
-                    t.noi_dung,
-                    t.progress,
-                    t.statusTask,
-                    t.ngay_dang_ki,
-                    username = t.Users.tendangnhap
-                })
-                .ToList();
-
-            if (!tasks.Any())
-            {
-                return Ok(new
-                {
-                    message = "Hiện tại chưa có task nào trong hệ thống."
-                });
-            }
-
-            return Ok(new
-            {
-                message = "Danh sách tất cả task",
-                task = tasks
-            });
-        }
-        [HttpGet("search")]
-        public IActionResult SearchTasks(string username, int leaderID)
-        {
-            var tasks = _db.Task_Regs
-                .Include(t => t.Users)
-                .Where(t => t.Users.tendangnhap == username && t.leader_ID == leaderID)
-                .Select(t => new
-                {
-                    t.id,
-                    t.tieu_de,
-                    t.noi_dung,
-                    t.progress,
-                    t.statusTask,
-                    t.ngay_dang_ki,
-                    username = t.Users.tendangnhap
-                })
-                .ToList();
-
-            if (!tasks.Any())
-            {
-                return Ok(new
-                {
-                    message = $"Không tìm thấy task nào của thực tập sinh '{username}'."
-                });
-            }
-            return Ok(new
-            {
-                message = $"Danh sách task của thực tập sinh '{username}'",
-                task = tasks
             });
         }
 

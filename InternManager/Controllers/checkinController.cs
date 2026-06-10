@@ -1,8 +1,10 @@
-﻿using InternManager.Data;
+﻿using System.Security.Claims;
+using InternManager.Data;
 using InternManager.DTO.attend;
 using InternManager.Model;
 using InternManager.Model.attend;
 using InternManager.Utils;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +13,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [AllowAnonymous]
     public class checkinController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -26,6 +29,10 @@ namespace InternManager.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAttendUser(int userID)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Token không hợp lệ.");
+            userID = int.Parse(userIdStr);
+
             var user = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
             if (user == null)
             {

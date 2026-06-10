@@ -2,6 +2,7 @@
 using InternManager.DTO.attend;
 using InternManager.Model.attend;
 using InternManager.Utils;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [AllowAnonymous]
     public class checkoutController : ControllerBase
     {
         private readonly ApplicationDbContext _db;

@@ -2,6 +2,7 @@
 using InternManager.DTO.task;
 using InternManager.Model;
 using InternManager.Model.task;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ namespace InternManager.Controllers
 {
     [Route("api/task-reviews")]
     [ApiController]
+    [AllowAnonymous]
     public class task_reviewController : ControllerBase
     {
         private readonly ApplicationDbContext _db;

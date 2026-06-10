@@ -6,7 +6,7 @@ namespace InternManager.DTO.task
 {
     public class task_regDTO
     {
-        public int leader_ID { get; set; }
+        public int admin_ID { get; set; }
         public int User_ID { get; set; }
 
 
