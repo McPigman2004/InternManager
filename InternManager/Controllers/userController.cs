@@ -209,21 +209,16 @@ namespace InternManager.Controllers
             });
         }
 
-        // -- CRUD INFO (TTS HOẶC ADMIN XỬ DỤNG)
         [HttpGet("info")]
-        public async Task<IActionResult> GetAllInfoUsers()
+        public async Task<IActionResult> GetInfoUsers(int UserID)
         {
-            // Lấy 30 thông tin chi tiết của các TTS mới nhất
-            var usersInfoList = await _db.Users_Infos
-                .Include(ui => ui.Users)
-                .OrderByDescending(ui => ui.id)
+            var userInfo = await _db.Users_Infos
+                .Where(ui => ui.User_ID == UserID)
                 .Select(ui => new
                 {
                     ui.id,
                     ui.User_ID,
-                    // Lấy dữ liệu từ bảng users
                     username = ui.Users.tendangnhap,
-                    // Lấy dữ liệu chi tiết từ bảng users_info
                     ui.hoten,
                     ui.nganh_hoc,
                     ui.vi_tri,
@@ -245,23 +240,21 @@ namespace InternManager.Controllers
                     ui.noi_cap_cccd,
                     ui.cv
                 })
-                .Take(30)
-                .ToListAsync();
+                .FirstOrDefaultAsync();
 
-            // Kiểm tra nếu không có dữ liệu
-            if (!usersInfoList.Any())
+
+            if (userInfo == null)
             {
-                return Ok(new
+                return NotFound(new
                 {
-                    message = "Hiện tại chưa có thông tin người dùng nào trong hệ thống.",
-                    data = usersInfoList
+                    message = $"Không tìm thấy thông tin cá nhân của người dùng có ID = {UserID}."
                 });
             }
 
             return Ok(new
             {
-                message = "Danh sách thông tin chi tiết 30 TTS mới nhất",
-                data = usersInfoList
+                message = $"Lấy thông tin cá nhân của người dùng có ID = {UserID} thành công.",
+                data = userInfo
             });
         }
 
@@ -424,8 +417,62 @@ namespace InternManager.Controllers
 
         // Chỉ dùng cho admin hoặc leader lấy danh sách 
         // thông tin thực tập sinh
+        [HttpGet("info/list-all")]
+        public async Task<IActionResult> GetAllInfoUsers()
+        {
+            // Lấy 30 thông tin chi tiết của các TTS mới nhất
+            var usersInfoList = await _db.Users_Infos
+                .Include(ui => ui.Users)
+                .OrderByDescending(ui => ui.id)
+                .Select(ui => new
+                {
+                    ui.id,
+                    ui.User_ID,
+                    // Lấy dữ liệu từ bảng users
+                    username = ui.Users.tendangnhap,
+                    // Lấy dữ liệu chi tiết từ bảng users_info
+                    ui.hoten,
+                    ui.nganh_hoc,
+                    ui.vi_tri,
+                    ui.mssv,
+                    ui.truong,
+                    ui.ngay_bat_dau,
+                    ui.thoi_gian_thuctap,
+                    ui.email_truong,
+                    ui.email_ca_nhan,
+                    ui.gioi_tinh,
+                    ui.gpa,
+                    ui.trinh_do_tieng_anh,
+                    ui.gioi_thieu,
+                    ui.dia_chi,
+                    ui.fb_url,
+                    ui.sdt,
+                    ui.cccd,
+                    ui.ngay_cap_cccd,
+                    ui.noi_cap_cccd,
+                    ui.cv
+                })
+                .Take(30)
+                .ToListAsync();
+
+            // Kiểm tra nếu không có dữ liệu
+            if (!usersInfoList.Any())
+            {
+                return Ok(new
+                {
+                    message = "Hiện tại chưa có thông tin người dùng nào trong hệ thống.",
+                    data = usersInfoList
+                });
+            }
+
+            return Ok(new
+            {
+                message = "Danh sách thông tin chi tiết 30 TTS mới nhất",
+                data = usersInfoList
+            });
+        }
         [HttpGet("info/search")]
-        public async Task<IActionResult> SearchUserInfo([FromQuery] string? hoten)
+        public async Task<IActionResult> SearchUserInfo(string? hoten)
         {
             var query = _db.Users_Infos.Include(ui => ui.Users).AsQueryable();
 

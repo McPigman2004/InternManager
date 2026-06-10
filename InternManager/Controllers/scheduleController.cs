@@ -260,19 +260,19 @@ namespace InternManager.Controllers
 
         // -- Áp dụng cho admin
         [HttpGet("search")]
-        public async Task<IActionResult> GetScheduleListGrouped(int userID)
+        public async Task<IActionResult> GetScheduleListGrouped(string username)
         {
-            var user = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.tendangnhap == username);
             if (user == null)
             {
                 return NotFound(new
                 {
-                    message = $"Không tìm thấy thực tập sinh có ID = {userID}."
+                    message = $"Không tìm thấy thực tập sinh có tên đăng nhập = {username}."
                 });
             }
 
             var rawSchedules = await _db.Reg_Schedule_Interns
-                .Where(s => s.User_ID == userID && s.status == StatusRegIntern.reg)
+                .Where(s => s.User_ID == user.id && s.status == StatusRegIntern.reg)
                 .Select(s => new
                 {
                     Username = s.Users.tendangnhap,
