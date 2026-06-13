@@ -61,19 +61,17 @@ namespace InternManager.DTO.user
         /// Email do nhà trường cấp
         /// </summary>
         /// <example>anvps12345@abc.edu.vn</example>
-        [Required(ErrorMessage = "Email trường không được để trống.")]
         [EmailAddress(ErrorMessage = "Email trường không đúng định dạng.")]
         [StringLength(255, ErrorMessage = "Email trường tối đa 255 kí tự.")]
-        public string email_school { get; set; } = "anvps12345@abc.edu.vn";
+        public string? email_school { get; set; } = "anvps12345@abc.edu.vn";
 
         /// <summary>
         /// Email cá nhân
         /// </summary>
         /// <example>nguyenvana@gmail.com</example>
-        [Required(ErrorMessage = "Email cá nhân không được để trống.")]
         [EmailAddress(ErrorMessage = "Email cá nhân không đúng định dạng.")]
         [StringLength(255, ErrorMessage = "Email cá nhân tối đa 255 kí tự.")]
-        public string email_personal { get; set; } = "nguyenvana@gmail.com";
+        public string? email_personal { get; set; } = "nguyenvana@gmail.com";
 
         [EnumDataType(typeof(GioiTinh), ErrorMessage = "Giới tính không hợp lệ. Chỉ chấp nhận các giá trị: boy, girl.")]
         public GioiTinh gioi_tinh { get; set; }

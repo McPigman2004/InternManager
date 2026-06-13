@@ -91,6 +91,15 @@ namespace InternManager.Controllers
             if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
             int adminID = int.Parse(userIdStr);
 
+            var today = DateOnly.FromDateTime(DateTime.Now);
+            if (newtaskRegDTO.ngay_dang_ki < today)
+            {
+                return BadRequest(new
+                {
+                    message = $"Tạo task thất bại! Ngày đăng ký ({newtaskRegDTO.ngay_dang_ki:dd/MM/yyyy}) không được nằm trong quá khứ so với hôm nay ({today:dd/MM/yyyy})."
+                });
+            }
+
             var usercheck = await _db.Users.AnyAsync(u => u.id == newtaskRegDTO.User_ID);
             if (!usercheck)
             {

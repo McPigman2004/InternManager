@@ -293,6 +293,14 @@ namespace InternManager.Controllers
                 });
             }
 
+
+            if (string.IsNullOrEmpty(newUserInfoDTO.email_school) && string.IsNullOrEmpty(newUserInfoDTO.email_personal))
+            {
+                ModelState.AddModelError("EmailError", "Bạn phải điền ít nhất 1 trong 2 loại email (Email trường hoặc Email cá nhân).");
+                return BadRequest(ModelState);
+            }
+
+
             var infoExists = await _db.Users_Infos.AnyAsync(ui => ui.User_ID == userID);
             if (infoExists)
             {
@@ -310,11 +318,6 @@ namespace InternManager.Controllers
             if (await _db.Users_Infos.AnyAsync(ui => ui.email_ca_nhan == newUserInfoDTO.email_personal))
             {
                 return BadRequest("Email này đã tồn tại trong cơ sở dữ liệu");
-            }
-
-            if (await _db.Users_Infos.AnyAsync(ui => ui.sdt == newUserInfoDTO.sdt))
-            {
-                return BadRequest("Số điện thoại này đã tồn tại trong cơ sở dữ liệu");
             }
 
             if (await _db.Users_Infos.AnyAsync(ui => ui.sdt == newUserInfoDTO.sdt))
