@@ -1,10 +1,9 @@
-using System.Text;
 using System.Text.Json.Serialization;
 using InternManager.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using InternManager.Utils;
+using Microsoft.AspNetCore.Authentication.Cookies; 
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,7 +12,9 @@ builder.Services.AddControllers()
     {
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
+
 builder.Services.AddEndpointsApiExplorer();
+
 builder.Services.AddSwaggerGen(options =>
 {
     var xmlFilename = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -24,15 +25,13 @@ builder.Services.AddSwaggerGen(options =>
         options.IncludeXmlComments(xmlPath);
     }
 
-    // Cấu hình nút khóa "Authorize" cho Swagger
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    options.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
     {
         In = ParameterLocation.Header,
-        Description = "Vui lòng điền: Bearer [chỗi_token_của_bạn]",
-        Name = "Authorization",
+        Description = "Vui lòng điền đúng SecretKey của Backend vào đây",
+        Name = "X-API-KEY",
         Type = SecuritySchemeType.ApiKey,
-        BearerFormat = "JWT",
-        Scheme = "Bearer"
+        Scheme = "ApiKeyScheme"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -43,7 +42,7 @@ builder.Services.AddSwaggerGen(options =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
+                    Id = "ApiKey"
                 }
             },
             new string[]{}
@@ -56,7 +55,6 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString))
 );
 
-
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
@@ -65,25 +63,23 @@ builder.Services.AddSession(options =>
     options.Cookie.IsEssential = true;
 });
 
-var secretKey = builder.Configuration["Settings:SecretKey"];
-var keyBytes = Encoding.UTF8.GetBytes(secretKey);
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
     {
-        ValidateIssuer = false,           // TẮT: Không check nhà phát hành
-        ValidateAudience = false,         // TẮT: Không check người tiếp nhận
-        ValidateLifetime = true,          // BẬT: Kiểm tra thời hạn Token
-        ValidateIssuerSigningKey = true, // BẬT: Kiểm tra tính hợp lệ của Secret Key
-        IssuerSigningKey = new SymmetricSecurityKey(keyBytes)
-    };
-});
+        options.Cookie.Name = "InternManager.SessionCookie"; 
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(30);
+
+        options.Events.OnRedirectToLogin = context => {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = context => {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -94,8 +90,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseSession();
-app.UseAuthentication();
-app.UseAuthorization();
+
+app.UseSession();        
+
+app.UseAuthentication(); 
+app.UseAuthorization();  
+
+app.UseMiddleware<ApiKeyMiddleware>(); 
+
 app.MapControllers();
+
 app.Run();

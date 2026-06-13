@@ -1,4 +1,5 @@
-﻿using InternManager.Data;
+﻿using System.Security.Claims;
+using InternManager.Data;
 using InternManager.DTO.task;
 using InternManager.Model;
 using InternManager.Model.task;
@@ -11,7 +12,7 @@ namespace InternManager.Controllers
 {
     [Route("api/task-reviews")]
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     public class task_reviewController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -22,8 +23,19 @@ namespace InternManager.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = "tts")]
         public IActionResult GetTaskReviews(int UserID)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            // Nếu không tìm thấy danh tính từ Cookie, hệ thống mới đá ra
+            if (string.IsNullOrEmpty(userIdStr))
+            {
+                return Unauthorized(new { message = "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn." });
+            }
+
+            UserID = int.Parse(userIdStr);
+
             var reviews = _db.Task_Reviews
                 .Where(r => r.Task_Reg.User_ID == UserID)
                 .OrderByDescending(r => r.ngay_dang_ki)
@@ -63,6 +75,7 @@ namespace InternManager.Controllers
         }
 
         [HttpGet("list-all")]
+        [Authorize(Roles = "admin")]
         public IActionResult GetAllTaskReviews()
         {
             var reviews = _db.Task_Reviews
@@ -106,6 +119,7 @@ namespace InternManager.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> ReviewTask(task_reviewDTO newReviewsTask)
         {
             if (!ModelState.IsValid)
@@ -113,22 +127,9 @@ namespace InternManager.Controllers
                 return BadRequest(ModelState);
             }
 
-            var reviewer = await _db.Users.FirstOrDefaultAsync(u => u.id == newReviewsTask.review_by_user);
-            if (reviewer == null)
-            {
-                return NotFound(new
-                {
-                    message = $"Không tìm thấy tài khoản người đánh giá có ID = {newReviewsTask.review_by_user}."
-                });
-            }
-
-            if (reviewer.role != UserRole.admin)
-            {
-                return BadRequest(new
-                {
-                    message = "Thao tác thất bại! Chỉ có Admin mới có quyền để lại nhận xét và đánh giá task."
-                });
-            }
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int adminID = int.Parse(userIdStr);
 
             var task = await _db.Task_Regs.FirstOrDefaultAsync(t => t.id == newReviewsTask.taskID);
             if (task == null)
@@ -158,24 +159,21 @@ namespace InternManager.Controllers
 
             var newReview = new task_review
             {
-                review_by_ID = newReviewsTask.review_by_user,
-                task_ID = newReviewsTask.taskID,              
-                noidung_danhgia = newReviewsTask.comment.Trim(), 
+                review_by_ID = adminID, // 🌟 Thay vì dùng DTO, đắp adminID lấy từ Cookie vào đây!
+                task_ID = newReviewsTask.taskID,
+                noidung_danhgia = newReviewsTask.comment.Trim(),
                 ngay_dang_ki = newReviewsTask.ngay_dang_ki
             };
 
             _db.Task_Reviews.Add(newReview);
-            await _db.SaveChangesAsync();
-
-            var internName = await _db.Users
-                .Where(u => u.id == task.User_ID)
-                .Select(u => u.tendangnhap)
-                .FirstOrDefaultAsync();
 
             task.statusTask = StatusTask.review;
             _db.Task_Regs.Update(task);
 
             await _db.SaveChangesAsync();
+
+            var reviewerName = await _db.Users.Where(u => u.id == adminID).Select(u => u.tendangnhap).FirstOrDefaultAsync();
+            var internName = await _db.Users.Where(u => u.id == task.User_ID).Select(u => u.tendangnhap).FirstOrDefaultAsync();
 
             return Ok(new
             {
@@ -183,7 +181,7 @@ namespace InternManager.Controllers
                 reviewInfo = new
                 {
                     newReview.id,
-                    reviewerName = reviewer.tendangnhap,
+                    reviewerName = reviewerName,
                     internName = internName,
                     taskTitle = task.tieu_de,
                     comment = newReview.noidung_danhgia,
@@ -193,6 +191,7 @@ namespace InternManager.Controllers
         }
 
         [HttpPut]
+        [Authorize(Roles = "admin,leader")]
         public async Task<IActionResult> UpdateReviewTask(int reviewId, task_reviewDTO updateReviewDTO)
         {
             if (!ModelState.IsValid)
@@ -200,16 +199,9 @@ namespace InternManager.Controllers
                 return BadRequest(ModelState);
             }
 
-            var reviewer = await _db.Users.FirstOrDefaultAsync(u => u.id == updateReviewDTO.review_by_user);
-            if (reviewer == null)
-            {
-                return NotFound(new { message = $"Không tìm thấy tài khoản người thực hiện chỉnh sửa có ID = {updateReviewDTO.review_by_user}." });
-            }
-
-            if (reviewer.role != UserRole.leader && reviewer.role != UserRole.admin)
-            {
-                return BadRequest(new { message = "Thao tác thất bại! Bạn không có quyền Leader hoặc Admin để chỉnh sửa đánh giá." });
-            }
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int adminID = int.Parse(userIdStr);
 
             var review = await _db.Task_Reviews.FirstOrDefaultAsync(r => r.id == reviewId);
             if (review == null)
@@ -217,24 +209,22 @@ namespace InternManager.Controllers
                 return NotFound(new { message = $"Không tìm thấy bản ghi đánh giá nào có ID = {reviewId} trong hệ thống." });
             }
 
- 
+            review.review_by_ID = adminID;
             review.noidung_danhgia = updateReviewDTO.comment.Trim();
-            review.ngay_dang_ki = updateReviewDTO.ngay_dang_ki; 
+            review.ngay_dang_ki = updateReviewDTO.ngay_dang_ki;
 
             await _db.SaveChangesAsync();
 
-            var taskTitle = await _db.Task_Regs
-                .Where(t => t.id == review.task_ID)
-                .Select(t => t.tieu_de)
-                .FirstOrDefaultAsync();
+            var reviewerName = await _db.Users.Where(u => u.id == adminID).Select(u => u.tendangnhap).FirstOrDefaultAsync();
+            var taskTitle = await _db.Task_Regs.Where(t => t.id == review.task_ID).Select(t => t.tieu_de).FirstOrDefaultAsync();
 
             return Ok(new
             {
-                message = $"Chỉnh sửa đánh giá cho review có ID = {reviewId} thành công.",
+                message = "Chỉnh sửa đánh giá thành công.",
                 updatedReview = new
                 {
                     review.id,
-                    reviewerName = reviewer.tendangnhap,
+                    reviewerName = reviewerName,
                     taskTitle = taskTitle,
                     comment = review.noidung_danhgia,
                     ngayCapNhat = review.ngay_dang_ki.ToString("dd/MM/yyyy")
@@ -243,6 +233,7 @@ namespace InternManager.Controllers
         }
 
         [HttpDelete]
+        [Authorize(Roles = "admin")]
         public IActionResult DeleteReviewTask(int reviewId)
         {
             var review = _db.Task_Reviews.FirstOrDefault(r => r.id == reviewId);
@@ -262,6 +253,7 @@ namespace InternManager.Controllers
         }
 
         [HttpGet("search")]
+        [Authorize(Roles = "admin")]
         public IActionResult GetSearchTaskReviews(string username)
         {
             var reviews = _db.Task_Reviews

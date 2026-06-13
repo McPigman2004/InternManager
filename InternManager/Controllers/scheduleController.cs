@@ -1,4 +1,5 @@
-﻿using InternManager.Data;
+﻿using System.Security.Claims;
+using InternManager.Data;
 using InternManager.DTO.attend;
 using InternManager.Model;
 using InternManager.Model.attend;
@@ -11,7 +12,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     public class scheduleController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -23,8 +24,19 @@ namespace InternManager.Controllers
 
         // -- CRUD SCHEDULE (TTS)
         [HttpGet]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> GetScheduleList(int userID)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            // Nếu không tìm thấy danh tính từ Cookie, hệ thống mới đá ra
+            if (string.IsNullOrEmpty(userIdStr))
+            {
+                return Unauthorized(new { message = "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn." });
+            }
+
+            userID = int.Parse(userIdStr);
+
             var user = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
             if (user == null)
             {
@@ -66,25 +78,27 @@ namespace InternManager.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> RegSchedule(List<reg_scheduleDTO> listScheduleDTO)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int userID = int.Parse(userIdStr);
+
             if (listScheduleDTO == null || !listScheduleDTO.Any())
             {
                 return BadRequest("Danh sách đăng ký lịch không được để trống.");
             }
 
-            var userIDs = listScheduleDTO.Select(s => s.UserID).Distinct().ToList();
-
-            var existingUserCount = await _db.Users.CountAsync(u => userIDs.Contains(u.id));
-            if (existingUserCount != userIDs.Count)
+            foreach (var item in listScheduleDTO)
             {
-                return NotFound("Có chứa ID thực tập sinh không tồn tại trong hệ thống.");
+                item.UserID = userID;
             }
 
             var dates = listScheduleDTO.Select(s => s.ngay_dang_ki).Distinct().ToList();
 
             var existingSchedules = await _db.Reg_Schedule_Interns
-                .Where(s => userIDs.Contains(s.User_ID) && dates.Contains(s.ngay_dang_ki))
+                .Where(s => s.User_ID == userID && dates.Contains(s.ngay_dang_ki))
                 .ToListAsync();
 
             var schedulesToAdd = new List<reg_schedule_intern>();
@@ -99,7 +113,7 @@ namespace InternManager.Controllers
 
                 if (isDuplicateLocal)
                 {
-                    dynamicFail.Add($"User {item.UserID} - Ngày {item.ngay_dang_ki} ({item.ca_lam}) - Trùng lặp trong danh sách gửi lên");
+                    dynamicFail.Add($"Ngày {item.ngay_dang_ki} ({item.ca_lam}) - Trùng lặp trong danh sách gửi lên");
                     continue;
                 }
 
@@ -110,7 +124,7 @@ namespace InternManager.Controllers
                 {
                     if (dbSchedule.status == StatusRegIntern.reg)
                     {
-                        dynamicFail.Add($"User {item.UserID} - Ngày {item.ngay_dang_ki} ({item.ca_lam}) - Lịch làm này bạn đã đăng ký rồi");
+                        dynamicFail.Add($"Ngày {item.ngay_dang_ki} ({item.ca_lam}) - Lịch làm này bạn đã đăng ký rồi");
                         continue;
                     }
 
@@ -119,8 +133,7 @@ namespace InternManager.Controllers
                         dbSchedule.status = StatusRegIntern.reg;
                         dbSchedule.ngay_dang_ki = item.ngay_dang_ki;
                         updatedCount++;
-
-                        dynamicComplete.Add($"User {item.UserID} - Ngày {item.ngay_dang_ki} ({item.ca_lam}) - Đăng ký lại lịch đã hủy thành công");
+                        dynamicComplete.Add($"Ngày {item.ngay_dang_ki} ({item.ca_lam}) - Đăng ký lại lịch đã hủy thành công");
                         continue;
                     }
                 }
@@ -131,10 +144,10 @@ namespace InternManager.Controllers
                     thu_trong_tuan = item.thu_trong_tuan,
                     ca_lam = item.ca_lam,
                     ngay_dang_ki = item.ngay_dang_ki,
-                    status = item.status
+                    status = StatusRegIntern.reg
                 });
 
-                dynamicComplete.Add($"User {item.UserID} - Ngày {item.ngay_dang_ki} ({item.ca_lam})");
+                dynamicComplete.Add($"Đăng ký thành công: Ngày {item.ngay_dang_ki} ({item.ca_lam})");
             }
 
             if (schedulesToAdd.Any())
@@ -156,7 +169,9 @@ namespace InternManager.Controllers
                 thatBai = dynamicFail
             });
         }
+
         [HttpPut]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> UpdateSchedule(List<int> ids)
         {
             if (ids == null || !ids.Any())
@@ -167,8 +182,11 @@ namespace InternManager.Controllers
                 });
             }
 
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            int userID = int.Parse(userIdStr);
+
             var schedules = await _db.Reg_Schedule_Interns
-                    .Where(s => ids.Contains(s.id))
+                    .Where(s => ids.Contains(s.id) && s.User_ID == userID)
                     .ToListAsync();
 
             if (!schedules.Any())
@@ -196,6 +214,7 @@ namespace InternManager.Controllers
 
         // -- Áp dụng cho admin
         [HttpGet("list-all")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAllScheduleListGrouped()
         {
             var rawSchedules = await _db.Reg_Schedule_Interns
@@ -262,6 +281,7 @@ namespace InternManager.Controllers
 
         // -- Áp dụng cho admin
         [HttpGet("search")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetScheduleListGrouped(string username)
         {
             var user = await _db.Users.FirstOrDefaultAsync(u => u.tendangnhap == username);

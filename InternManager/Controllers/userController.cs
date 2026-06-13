@@ -1,4 +1,5 @@
-﻿using InternManager.Data;
+﻿using System.Security.Claims;
+using InternManager.Data;
 using InternManager.DTO.user;
 using InternManager.Model;
 using InternManager.Model.info;
@@ -11,7 +12,6 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
     public class userController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -23,6 +23,7 @@ namespace InternManager.Controllers
 
         // -- CRUD USER (ADMIN)
         [HttpGet]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAllUsers()
         {
             // Lấy 30 người dùng đầu 
@@ -55,6 +56,7 @@ namespace InternManager.Controllers
         }
 
         [HttpPost]
+        [AllowAnonymous]
         public async Task<IActionResult> createUser(userDTO newUserDTO)
         {
             if (await _db.Users.AnyAsync(u => u.tendangnhap == newUserDTO.username))
@@ -85,7 +87,8 @@ namespace InternManager.Controllers
 
         // Tạo user theo kiểu dạng danh sách 
         // có thể áp dụng cho việc đẩy các file excel lên
-        [HttpPost("create-list")]
+        [HttpPost("create-list")]   
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateUsers(List<userDTO> newUsersDTO)
         {
             if (newUsersDTO == null || !newUsersDTO.Any())
@@ -141,6 +144,7 @@ namespace InternManager.Controllers
         }
 
         [HttpPut]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> UpdateUser(int userID, userDTO updateUserDTO)
         {
             var UserID = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
@@ -176,6 +180,7 @@ namespace InternManager.Controllers
         }
 
         [HttpGet("search")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> SearchUser(string username)
         {
             var query = _db.Users.AsQueryable();
@@ -212,8 +217,19 @@ namespace InternManager.Controllers
         }
 
         [HttpGet("info")]
+        [Authorize(Roles = "admin, tts")]
         public async Task<IActionResult> GetInfoUsers(int UserID)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            // Nếu không tìm thấy danh tính từ Cookie, hệ thống mới đá ra
+            if (string.IsNullOrEmpty(userIdStr))
+            {
+                return Unauthorized(new { message = "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn." });
+            }
+
+            UserID = int.Parse(userIdStr);
+
             var userInfo = await _db.Users_Infos
                 .Where(ui => ui.User_ID == UserID)
                 .Select(ui => new
@@ -261,18 +277,23 @@ namespace InternManager.Controllers
         }
 
         [HttpPost("info")]
+        [Authorize(Roles = "admin, tts")]
         public async Task<IActionResult> createUserInfo(userInfoDTO newUserInfoDTO)
         {
-            var userExists = await _db.Users.AnyAsync(u => u.id == newUserInfoDTO.UserID);
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int userID = int.Parse(userIdStr);
+
+            var userExists = await _db.Users.AnyAsync(u => u.id == userID);
             if (!userExists)
             {
                 return NotFound(new
                 {
-                    message = $"Không tìm thấy tài khoản (User) có ID = {newUserInfoDTO.UserID}."
+                    message = $"Không tìm thấy tài khoản (User) có ID = {userID}."
                 });
             }
 
-            var infoExists = await _db.Users_Infos.AnyAsync(ui => ui.User_ID == newUserInfoDTO.UserID);
+            var infoExists = await _db.Users_Infos.AnyAsync(ui => ui.User_ID == userID);
             if (infoExists)
             {
                 return BadRequest(new
@@ -308,7 +329,7 @@ namespace InternManager.Controllers
 
             var newUserInfo = new users_info
             {
-                User_ID = newUserInfoDTO.UserID,
+                User_ID = userID,
                 hoten = newUserInfoDTO.fullname,
                 nganh_hoc = newUserInfoDTO.study,
                 vi_tri = newUserInfoDTO.postion,
@@ -341,8 +362,13 @@ namespace InternManager.Controllers
         }
 
         [HttpPut("info")]
+        [Authorize(Roles = "admin, tts")]
         public async Task<IActionResult> UpdateUserInfo(int userID, userInfoDTO updateUserInfoDTO)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            userID = int.Parse(userIdStr);
+
             var UserID = await _db.Users_Infos.FirstOrDefaultAsync(ui => ui.User_ID == userID);
             if (UserID == null)
             {
@@ -420,6 +446,7 @@ namespace InternManager.Controllers
         // Chỉ dùng cho admin hoặc leader lấy danh sách 
         // thông tin thực tập sinh
         [HttpGet("info/list-all")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAllInfoUsers()
         {
             // Lấy 30 thông tin chi tiết của các TTS mới nhất
@@ -474,6 +501,7 @@ namespace InternManager.Controllers
             });
         }
         [HttpGet("info/search")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> SearchUserInfo(string? hoten)
         {
             var query = _db.Users_Infos.Include(ui => ui.Users).AsQueryable();

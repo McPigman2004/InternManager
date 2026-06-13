@@ -1,4 +1,5 @@
-﻿using InternManager.Data;
+﻿using System.Security.Claims;
+using InternManager.Data;
 using InternManager.DTO.attend;
 using InternManager.Model.attend;
 using InternManager.Utils;
@@ -11,7 +12,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     public class checkoutController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -24,8 +25,19 @@ namespace InternManager.Controllers
         }
         // -- CRUD ATTENDANCE (TTS)
         [HttpGet]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> GetAttendUser(int userID)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            // Nếu không tìm thấy danh tính từ Cookie, hệ thống mới đá ra
+            if (string.IsNullOrEmpty(userIdStr))
+            {
+                return Unauthorized(new { message = "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn." });
+            }
+
+            userID = int.Parse(userIdStr);
+
             var user = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
             if (user == null)
             {
@@ -66,13 +78,18 @@ namespace InternManager.Controllers
             });
         }
         [HttpPost]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> CheckOutGPS(checkOutDTO newcheckOutDTO)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int userID = int.Parse(userIdStr);
+
             var today = DateOnly.FromDateTime(DateTime.Now);
 
             var validSchedule = await _db.Reg_Schedule_Interns
                 .FirstOrDefaultAsync(s => s.id == newcheckOutDTO.reg_intern_ID
-                                       && s.User_ID == newcheckOutDTO.User_ID
+                                       && s.User_ID == userID
                                        && s.ngay_dang_ki == today);
 
             if (validSchedule == null)
@@ -85,7 +102,7 @@ namespace InternManager.Controllers
 
             var existingCheckIn = await _db.Attendance_Checkins
                 .FirstOrDefaultAsync(ci => ci.reg_intern_ID == newcheckOutDTO.reg_intern_ID
-                                       && ci.User_ID == newcheckOutDTO.User_ID);
+                                       && ci.User_ID == userID);
 
             if (existingCheckIn == null)
             {
@@ -97,7 +114,7 @@ namespace InternManager.Controllers
 
             var newcheckOut = new attendance_checkout
             {
-                User_ID = newcheckOutDTO.User_ID,
+                User_ID = userID,
                 reg_intern_ID = newcheckOutDTO.reg_intern_ID,
                 checkout = DateTime.Now,
                 vi_do = (decimal)Math.Round(newcheckOutDTO.vi_do, 2),
@@ -115,8 +132,9 @@ namespace InternManager.Controllers
                 message = $"Thực tập sinh đã Check-out thành công lúc {DateTime.Now.ToString("HH:mm:ss")}!",
             });
         }
-        // -- ADMIN Hoặc Leader thấy
+        // -- ADMIN thấy
         [HttpGet("list")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAttendAll()
         {
             var today = DateOnly.FromDateTime(DateTime.Now);
@@ -151,6 +169,7 @@ namespace InternManager.Controllers
             });
         }
         [HttpGet("search")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> SearchAttendAll(string username)
         {
             if (string.IsNullOrEmpty(username))
@@ -191,6 +210,7 @@ namespace InternManager.Controllers
             });
         }
         [HttpDelete]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> RemoveCheckOut(int UserID)
         {
             var todayDateTime = DateTime.Today;

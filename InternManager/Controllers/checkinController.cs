@@ -13,7 +13,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     public class checkinController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -27,10 +27,17 @@ namespace InternManager.Controllers
 
         // -- CRUD ATTENDANCE (TTS)
         [HttpGet]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> GetAttendUser(int userID)
         {
             var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Token không hợp lệ.");
+
+            // Nếu không tìm thấy danh tính từ Cookie, hệ thống mới đá ra
+            if (string.IsNullOrEmpty(userIdStr))
+            {
+                return Unauthorized(new { message = "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn." });
+            }
+
             userID = int.Parse(userIdStr);
 
             var user = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
@@ -73,8 +80,13 @@ namespace InternManager.Controllers
             });
         }
         [HttpPost]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> CheckInGPS(checkInDTO newCheckInDTO)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int userID = int.Parse(userIdStr);
+
             var companyLat = _config.GetValue<double>("GPSSettings:Latitude");
             var companyLon = _config.GetValue<double>("GPSSettings:Longitude");
             var allowedRadius = _config.GetValue<double>("GPSSettings:AllowedRadiusInMeters");
@@ -84,7 +96,7 @@ namespace InternManager.Controllers
 
             var validSchedule = await _db.Reg_Schedule_Interns
                 .FirstOrDefaultAsync(s => s.id == newCheckInDTO.reg_intern_ID
-                                       && s.User_ID == newCheckInDTO.User_ID
+                                       && s.User_ID == userID
                                        && s.ngay_dang_ki == today);
 
             if (validSchedule == null)
@@ -161,7 +173,7 @@ namespace InternManager.Controllers
             // Lưu dữ liệu điểm danh xuống Database
             var newCheckIn = new attendance_checkin
             {
-                User_ID = newCheckInDTO.User_ID,
+                User_ID = userID,
                 reg_intern_ID = newCheckInDTO.reg_intern_ID,
                 checkin = now,
                 vi_do = (decimal)Math.Round(newCheckInDTO.vi_do, 2),
@@ -194,6 +206,7 @@ namespace InternManager.Controllers
 
         // -- ADMIN Hoặc Leader thấy
         [HttpGet("list")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> GetAttendAll()
         {
             var today = DateOnly.FromDateTime(DateTime.Now);
@@ -228,6 +241,7 @@ namespace InternManager.Controllers
             });
         }
         [HttpGet("search")]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> SearchAttendAll(string username)
         {
             if (string.IsNullOrEmpty(username))
@@ -268,6 +282,7 @@ namespace InternManager.Controllers
             });
         }
         [HttpDelete]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> RemoveCheckIn(int UserID)
         {
             var todayDateTime = DateTime.Today;

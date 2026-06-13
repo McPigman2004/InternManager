@@ -1,4 +1,5 @@
-﻿using InternManager.Data;
+﻿using System.Security.Claims;
+using InternManager.Data;
 using InternManager.DTO.task;
 using InternManager.Model;
 using InternManager.Model.task;
@@ -11,7 +12,7 @@ namespace InternManager.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     public class taskController : ControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -24,8 +25,19 @@ namespace InternManager.Controllers
         // TTS xem danh sách task của mình
         // Xem danh sách task của một user
         [HttpGet]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> GetUserTask(int userID)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            // Nếu không tìm thấy danh tính từ Cookie, hệ thống mới đá ra
+            if (string.IsNullOrEmpty(userIdStr))
+            {
+                return Unauthorized(new { message = "Bạn chưa đăng nhập hoặc phiên làm việc đã hết hạn." });
+            }
+
+            userID = int.Parse(userIdStr);
+
             var user = await _db.Users.FirstOrDefaultAsync(u => u.id == userID);
             if (user == null)
             {
@@ -72,44 +84,22 @@ namespace InternManager.Controllers
 
         // Leader hoặc admin tạo task cho TTS
         [HttpPost]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> CreateTask(task_regDTO newtaskRegDTO)
         {
-            var isUserExists = await _db.Users
-                .AnyAsync(u => u.id == newtaskRegDTO.admin_ID);
-
-            if (!isUserExists)
-            {
-                return NotFound(new
-                {
-                    message = $"Không tìm thấy tài khoản nào có ID = {newtaskRegDTO.admin_ID} trong hệ thống."
-                });
-            }
-
-
-            var hasValidRole = await _db.Users
-                .AnyAsync(u => u.id == newtaskRegDTO.admin_ID
-                           && (u.role == UserRole.leader || u.role == UserRole.admin));
-
-            if (!hasValidRole)
-            {
-                return BadRequest(new
-                {
-                    message = "Tạo task thất bại! Tài khoản này không có quyền hạn hợp lệ (Phải là Leader hoặc Admin) để giao việc."
-                });
-            }
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int adminID = int.Parse(userIdStr);
 
             var usercheck = await _db.Users.AnyAsync(u => u.id == newtaskRegDTO.User_ID);
             if (!usercheck)
             {
-                return NotFound(new
-                {
-                    message = $"Không tìm thấy thực tập sinh có ID = {newtaskRegDTO.User_ID} trong hệ thống."
-                });
+                return NotFound(new { message = $"Không tìm thấy thực tập sinh có ID = {newtaskRegDTO.User_ID} trong hệ thống." });
             }
 
             var newTask = new task_reg
             {
-                leader_ID = newtaskRegDTO.admin_ID,
+                leader_ID = adminID,
                 User_ID = newtaskRegDTO.User_ID,
                 tieu_de = newtaskRegDTO.title.Trim(),
                 noi_dung = newtaskRegDTO.content.Trim(),
@@ -144,21 +134,25 @@ namespace InternManager.Controllers
             });
         }
 
-        // TTS cập nhật tiến độ và trạng thái của task
         [HttpPut]
+        [Authorize(Roles = "tts")]
         public async Task<IActionResult> UpdateTask(int taskId, task_regDTO updateDTO)
         {
+            var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdStr)) return Unauthorized("Phiên làm việc không hợp lệ.");
+            int userID = int.Parse(userIdStr);
+
             if (updateDTO.progress < 0 || updateDTO.progress > 100)
             {
                 return BadRequest(new { message = "Tiến độ công việc phải nằm trong khoảng từ 0% đến 100%." });
             }
 
-            var task = await _db.Task_Regs.FirstOrDefaultAsync(t => t.id == taskId);
+            var task = await _db.Task_Regs.FirstOrDefaultAsync(t => t.id == taskId && t.User_ID == userID);
             if (task == null)
             {
                 return NotFound(new
                 {
-                    message = $"Không tìm thấy task nào có ID = {taskId} trong hệ thống."
+                    message = $"Không tìm thấy task hợp lệ nào có ID = {taskId} thuộc quyền sở hữu của bạn."
                 });
             }
 
@@ -168,19 +162,10 @@ namespace InternManager.Controllers
             }
 
             task.progress = updateDTO.progress;
-
-            if (updateDTO.progress == 100)
-            {
-                task.statusTask = StatusTask.done;
-            }
-            else
-            {
-                task.statusTask = StatusTask.in_progress;
-            }
+            task.statusTask = (updateDTO.progress == 100) ? StatusTask.done : StatusTask.in_progress;
 
             _db.Task_Regs.Update(task);
             await _db.SaveChangesAsync();
-
 
             return Ok(new
             {
@@ -200,19 +185,9 @@ namespace InternManager.Controllers
         }
 
         [HttpPut("admin-update")]
-        public async Task<IActionResult> AdminUpdateTask(int taskId, int adminId, [FromBody] task_regDTO updateDTO)
+        [Authorize(Roles = "admin")]
+        public async Task<IActionResult> AdminUpdateTask(int taskId, [FromBody] task_regDTO updateDTO)
         {
-            var isAdminValid = await _db.Users
-                .AnyAsync(u => u.id == adminId && (u.role == UserRole.admin || u.role == UserRole.leader));
-
-            if (!isAdminValid)
-            {
-                return BadRequest(new
-                {
-                    message = "Thao tác thất bại! Bạn không có quyền Admin hoặc Leader để chỉnh sửa các thông tin cốt lõi của task."
-                });
-            }
-
             if (updateDTO.progress < 0 || updateDTO.progress > 100)
             {
                 return BadRequest(new { message = "Tiến độ công việc phải nằm trong khoảng từ 0% đến 100%." });
@@ -234,7 +209,6 @@ namespace InternManager.Controllers
                 task.User_ID = updateDTO.User_ID;
             }
 
-
             task.tieu_de = updateDTO.title.Trim();
             task.noi_dung = updateDTO.content.Trim();
             task.progress = updateDTO.progress;
@@ -251,7 +225,7 @@ namespace InternManager.Controllers
 
             return Ok(new
             {
-                message = $"Admin (ID: {adminId}) đã cập nhật toàn bộ thông tin task {taskId} thành công.",
+                message = $"Cập nhật toàn bộ thông tin task {taskId} thành công.",
                 updatedTask = new
                 {
                     task.id,
@@ -268,6 +242,7 @@ namespace InternManager.Controllers
         }
 
         [HttpDelete]
+        [Authorize(Roles = "admin")]
         public async Task<IActionResult> DeleteTask(int taskId)
         {
             var task = await _db.Task_Regs.FirstOrDefaultAsync(t => t.id == taskId);
@@ -288,6 +263,7 @@ namespace InternManager.Controllers
 
         // Admin xem danh sách task
         [HttpGet("list-all")]
+        [Authorize(Roles = "admin")]
         public IActionResult GetTasksDone()
         {
             var completedTasks = _db.Task_Regs
@@ -321,6 +297,7 @@ namespace InternManager.Controllers
             });
         }
         [HttpGet("admin-search")]
+        [Authorize(Roles = "admin")]
         public IActionResult GetSearchTaskTTS(string username)
         {
             var tasks = _db.Task_Regs
